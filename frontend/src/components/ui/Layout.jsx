@@ -1,44 +1,181 @@
+import { useState } from 'react'
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
+import { PRIMARY, GRAY, SIDEBAR } from '../../theme'
+import { Icon } from './Icons'
 
-const nav = [
-  { to: '/',      label: 'Dashboard',      icon: '⊞' },
-  { to: '/nuevo', label: 'Nuevo análisis', icon: '+' },
+const Icons = {
+  dashboard: <Icon.Dashboard />,
+  nuevo:     <Icon.Plus />,
+  historial: <Icon.History />,
+  perfil:    <Icon.User />,
+  logout:    <Icon.Logout size={14} />,
+  menu:      <Icon.Menu />,
+}
+
+const NAV = [
+  { section: 'Análisis', items: [
+    { to: '/',          label: 'Dashboard',      icon: Icons.dashboard },
+    { to: '/nuevo',     label: 'Nuevo análisis', icon: Icons.nuevo },
+    { to: '/historial', label: 'Historial',      icon: Icons.historial },
+  ]},
+  { section: 'Cuenta', items: [
+    { to: '/perfil', label: 'Mi perfil', icon: Icons.perfil },
+  ]},
 ]
 
-export default function Layout() {
+function NavItem({ to, label, icon, collapsed }) {
   const { pathname } = useLocation()
-  const { user, logout } = useAuthStore()
+  const active = pathname === to || (to !== '/' && pathname.startsWith(to))
+  const [hover, setHover] = useState(false)
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <Link to={to} title={collapsed ? label : undefined}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex', alignItems: 'center',
+        gap: '10px',
+        padding: collapsed ? '9px 0' : '9px 12px',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        borderRadius: '8px',
+        fontSize: '13px',
+        fontWeight: active ? '600' : '400',
+        color: active ? '#fff' : hover ? '#fff' : 'rgba(255,255,255,0.65)',
+        background: active ? 'rgba(255,255,255,0.18)' : hover ? 'rgba(255,255,255,0.10)' : 'transparent',
+        textDecoration: 'none',
+        transition: 'all 0.15s',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        marginBottom: '2px',
+      }}>
+      <span style={{ flexShrink: 0 }}>{icon}</span>
+      {!collapsed && label}
+    </Link>
+  )
+}
+
+export default function Layout() {
+  const { user, logout } = useAuthStore()
+  const [collapsed, setCollapsed] = useState(false)
+
+  const creditosTexto = user?.plan === 'free'
+    ? `${Math.max(0, 2 - (user?.creditos_free_usados_este_mes || 0))}/2`
+    : user?.plan === 'pro' ? '∞' : `${user?.creditos || 0}`
+
+  const planLabel = { free: 'Free', creditos: 'Créditos', pro: 'Pro' }
+
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh', background: GRAY[50] }}>
+
       {/* Sidebar */}
-      <aside className="w-56 bg-[#1F4E8C] text-white flex flex-col">
-        <div className="px-5 py-6 border-b border-white/10">
-          <h1 className="text-lg font-bold">FinAnalytics</h1>
-          <p className="text-blue-300 text-xs mt-0.5">Indicadores financieros</p>
+      <aside style={{
+        width: collapsed ? '56px' : '220px',
+        minWidth: collapsed ? '56px' : '220px',
+        background: PRIMARY[500],
+        display: 'flex', flexDirection: 'column',
+        transition: 'width 0.2s, min-width 0.2s',
+        overflow: 'hidden',
+        position: 'sticky', top: 0, height: '100vh',
+      }}>
+
+        {/* Header */}
+        <div style={{
+          padding: collapsed ? '16px 0' : '16px 14px',
+          borderBottom: '1px solid rgba(255,255,255,0.10)',
+          display: 'flex', alignItems: 'center',
+          justifyContent: collapsed ? 'center' : 'space-between',
+        }}>
+          {!collapsed && (
+            <div>
+              <div style={{ color: '#fff', fontWeight: '700', fontSize: '15px', letterSpacing: '-0.3px' }}>FinAnalytics</div>
+              <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '10px', marginTop: '1px' }}>Indicadores financieros</div>
+            </div>
+          )}
+          <button onClick={() => setCollapsed(c => !c)} style={{
+            background: 'rgba(255,255,255,0.10)', border: 'none', borderRadius: '6px',
+            padding: '6px', cursor: 'pointer', color: 'rgba(255,255,255,0.7)',
+            display: 'flex', alignItems: 'center', flexShrink: 0,
+          }}>
+            <Icon.Menu />
+          </button>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {nav.map(({ to, label, icon }) => (
-            <Link key={to} to={to}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition
-                ${pathname === to ? 'bg-white/15 text-white' : 'text-blue-200 hover:bg-white/10 hover:text-white'}`}>
-              <span className="text-base">{icon}</span>
-              {label}
-            </Link>
+
+        {/* Plan badge */}
+        {!collapsed && (
+          <div style={{ padding: '8px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{
+                fontSize: '11px', fontWeight: '600', color: '#fff',
+                background: 'rgba(255,255,255,0.12)', padding: '2px 8px', borderRadius: '20px',
+              }}>Plan {planLabel[user?.plan] || 'Free'}</span>
+              <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
+                {creditosTexto} análisis
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Nav */}
+        <nav style={{ flex: 1, padding: collapsed ? '10px 6px' : '10px 8px', overflowY: 'auto' }}>
+          {NAV.map(({ section, items }) => (
+            <div key={section} style={{ marginBottom: '14px' }}>
+              {!collapsed && (
+                <div style={{
+                  fontSize: '10px', fontWeight: '600', letterSpacing: '0.08em',
+                  textTransform: 'uppercase', color: 'rgba(255,255,255,0.30)',
+                  padding: '0 12px 4px',
+                }}>
+                  {section}
+                </div>
+              )}
+              {items.map(item => <NavItem key={item.to} {...item} collapsed={collapsed} />)}
+            </div>
           ))}
         </nav>
-        <div className="px-4 py-4 border-t border-white/10">
-          <p className="text-xs text-blue-300 truncate">{user?.email}</p>
-          <button onClick={logout}
-            className="text-xs text-blue-300 hover:text-white mt-2 transition">
-            Cerrar sesión
-          </button>
+
+        {/* Usuario */}
+        <div style={{ padding: collapsed ? '10px 6px' : '10px 8px', borderTop: '1px solid rgba(255,255,255,0.10)' }}>
+          {!collapsed ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                width: '28px', height: '28px', borderRadius: '50%',
+                background: 'rgba(255,255,255,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '11px', fontWeight: '700', color: '#fff', flexShrink: 0,
+              }}>
+                {user?.nombre?.[0]?.toUpperCase() || 'U'}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '12px', fontWeight: '500', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.nombre}
+                </div>
+                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.email}
+                </div>
+              </div>
+              <button onClick={logout} title="Cerrar sesión"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', padding: '4px', borderRadius: '4px', display: 'flex' }}
+                onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+                onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
+              >
+                <Icon.Logout size={14} />
+              </button>
+            </div>
+          ) : (
+            <button onClick={logout} title="Cerrar sesión" style={{
+              width: '100%', background: 'rgba(255,255,255,0.08)', border: 'none',
+              borderRadius: '6px', padding: '7px', cursor: 'pointer',
+              color: 'rgba(255,255,255,0.5)', display: 'flex', justifyContent: 'center',
+            }}>
+              <Icon.Logout size={14} />
+            </button>
+          )}
         </div>
       </aside>
 
       {/* Contenido */}
-      <main className="flex-1 overflow-auto">
+      <main style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
         <Outlet />
       </main>
     </div>

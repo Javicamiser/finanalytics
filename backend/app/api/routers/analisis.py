@@ -167,6 +167,7 @@ def ejecutar_analisis(
         usuario_id=user.id,
         modo=ModoAnalisisEnum(config_in.modo),
         ciius=config_in.ciius,
+        nombre=config_in.nombre,
         porcentaje_muestra=config_in.porcentaje_muestra,
         hi_umbral=config_in.hi_umbral,
         indices_empresa=config_in.indices_empresa,
@@ -251,8 +252,15 @@ def descargar_graficas(
     analisis_id: int,
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
+    # Personalización
+    paleta: str = "corporativo",
+    incluir_conclusion: bool = True,
+    indices: str = "",                     # ej: "IL,IE,RCI" — vacío = todos
+    color_activa: str = "",                # hex personalizado para barra activa
+    color_normal: str = "",                # hex personalizado para barra normal
+    color_linea: str = "",                 # hex personalizado para línea Hi
 ):
-    """Descarga un ZIP con todas las gráficas PNG del análisis."""
+    """Descarga un ZIP con gráficas PNG personalizadas del análisis."""
     if not _puede_descargar(user):
         raise HTTPException(
             402,
@@ -275,7 +283,25 @@ def descargar_graficas(
         n_empresas_b=a.resultado_json.get("config", {}).get("n_empresas_b") if a.resultado_json else None,
     )
     resultado = MotorAnalisis(df).ejecutar(config)
-    zip_bytes = GeneradorGraficas(resultado).todas_como_zip()
+
+    # Construir color personalizado si se envió
+    color_custom = None
+    if any([color_activa, color_normal, color_linea]):
+        color_custom = {}
+        if color_activa: color_custom["bar_activa"] = color_activa
+        if color_normal: color_custom["bar_normal"] = color_normal
+        if color_linea:  color_custom["linea"]      = color_linea
+
+    indices_list = [i.strip().upper() for i in indices.split(",") if i.strip()] or None
+
+    gen = GeneradorGraficas(
+        resultado,
+        paleta=paleta,
+        incluir_conclusion=incluir_conclusion,
+        indices=indices_list,
+        color_personalizado=color_custom,
+    )
+    zip_bytes = gen.todas_como_zip()
 
     return StreamingResponse(
         io.BytesIO(zip_bytes),
@@ -435,3 +461,21 @@ def calcular_hi_optimo(
             f"de muestra, el sistema sugiere usar Hi = {hi_global:.0%}."
         ),
     }
+
+
+@router.patch("/{analisis_id}/nombre", tags=["Análisis"])
+def renombrar_analisis(
+    analisis_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    """Renombra un análisis existente."""
+    a = db.query(Analisis).filter(
+        Analisis.id == analisis_id, Analisis.usuario_id == user.id
+    ).first()
+    if not a:
+        raise HTTPException(404, "Análisis no encontrado")
+    a.nombre = payload.get("nombre", "")[:200]
+    db.commit()
+    return {"id": a.id, "nombre": a.nombre}

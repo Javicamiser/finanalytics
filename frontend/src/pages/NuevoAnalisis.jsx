@@ -25,7 +25,8 @@ export default function NuevoAnalisis() {
   const [pctMuestra, setPctMuestra] = useState(3)
   const [hiUmbral, setHiUmbral] = useState(59)
   const [indicesEmpresa, setIndicesEmpresa] = useState({ IL: '', IE: '', RCI: '', RP: '', RA: '' })
-  const [nEmpresasB, setNEmpresasB] = useState(30)   // Modo B: número de empresas
+  const [nEmpresasB, setNEmpresasB] = useState(30)
+  const [nombreAnalisis, setNombreAnalisis] = useState('')   // Modo B: número de empresas
   const [estadoDatos, setEstadoDatos] = useState(null)
   const inputRef = useRef(null)
   const dropdownRef = useRef(null)
@@ -94,6 +95,7 @@ export default function NuevoAnalisis() {
       const config = {
         ciius: ciius.map(c => c.codigo),
         modo,
+        nombre: nombreAnalisis || null,
         porcentaje_muestra: pctMuestra / 100,
         hi_umbral: hiUmbral / 100,
         indices_empresa: modo === 'B'
@@ -128,6 +130,22 @@ export default function NuevoAnalisis() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-7">
+
+        {/* Nombre del análisis */}
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">
+            Nombre del análisis <span className="font-normal text-gray-400">(opcional)</span>
+          </label>
+          <input
+            type="text"
+            value={nombreAnalisis}
+            onChange={e => setNombreAnalisis(e.target.value)}
+            placeholder="ej: Sector construcción Huila 2024"
+            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1F4E8C]"
+            maxLength={200}
+          />
+          <p className="text-xs text-gray-400 mt-1">Aparecerá en el historial para identificar el análisis fácilmente</p>
+        </div>
 
         {/* Modo */}
         <div>

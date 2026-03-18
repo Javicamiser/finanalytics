@@ -38,7 +38,8 @@ class UsuarioOut(BaseModel):
 
 class ConfigAnalisisIn(BaseModel):
     ciius: list[str]
-    modo: str = "A"                           # "A" | "B"
+    modo: str = "A"
+    nombre: str | None = None          # nombre personalizado del análisis                           # "A" | "B"
     indices_empresa: dict[str, float] | None = None
     porcentaje_muestra: float = 0.03
     hi_umbral: float = 0.59
@@ -70,6 +71,7 @@ class ConfigAnalisisIn(BaseModel):
 
 class AnalisisOut(BaseModel):
     id: int
+    nombre: str | None = None
     modo: str
     ciius: list[str]
     n_poblacion: int | None

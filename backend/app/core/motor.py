@@ -658,11 +658,14 @@ class MotorAnalisis:
             obj_norm  = n_menores / col.notna().sum() if col.notna().sum() > 0 else 0.5
             dist_mat[idx] = (col_norm - obj_norm) ** 2
 
-        # Promedio de dimensiones disponibles por empresa (no suma — evita penalizar NaN)
-        dist = dist_mat.mean(axis=1)   # mean ignora NaN por defecto
+        # Promedio de dimensiones disponibles por empresa (mean ignora NaN)
+        dist = dist_mat.mean(axis=1)
+        # Empresas sin ningún índice calculable obtienen distancia máxima (van al final)
+        dist = dist.fillna(dist.max() + 1 if dist.notna().any() else 999)
         df_valido["_dist"] = dist
-        df_valido = df_valido.sort_values("_dist", na_position="last").reset_index(drop=True)
+        df_valido = df_valido.sort_values("_dist").reset_index(drop=True)
         grupo = df_valido.head(n_sel).drop(columns=["_dist"], errors="ignore")
+        logger.info(f"[ModoB] sector={len(df_sector)} valido={len(df_valido)} n_obj={n_obj} n_sel={n_sel} grupo={len(grupo)}")
 
         # Métricas por índice
         resumen = {}
@@ -771,14 +774,34 @@ class MotorAnalisis:
 # ─────────────────────────────────────────────────────────────────────────────
 #  GENERADOR DE GRÁFICAS
 # ─────────────────────────────────────────────────────────────────────────────
+# Paletas predefinidas — bar_activa, bar_normal, linea, referencia, titulo
+PALETAS = {
+    "corporativo": {"bar_activa": "#1F4E8C", "bar_normal": "#AED6F1", "linea": "#F39C12", "ref": "#E74C3C", "titulo": "#1F4E8C"},
+    "ocean":       {"bar_activa": "#0077B6", "bar_normal": "#90E0EF", "linea": "#F77F00", "ref": "#D62828", "titulo": "#0077B6"},
+    "forest":      {"bar_activa": "#2D6A4F", "bar_normal": "#95D5B2", "linea": "#E9C46A", "ref": "#E76F51", "titulo": "#2D6A4F"},
+    "slate":       {"bar_activa": "#2C3E50", "bar_normal": "#95A5A6", "linea": "#E67E22", "ref": "#E74C3C", "titulo": "#2C3E50"},
+    "wine":        {"bar_activa": "#6D2B6D", "bar_normal": "#C9A0C9", "linea": "#F4A261", "ref": "#E63946", "titulo": "#6D2B6D"},
+    "carbon":      {"bar_activa": "#1A1A2E", "bar_normal": "#8B8FA8", "linea": "#FFB347", "ref": "#FF6B6B", "titulo": "#1A1A2E"},
+}
+
+# Colores por defecto para compatibilidad
 C = {"azul": "#1F4E8C", "azul2": "#2E86C1", "celeste": "#AED6F1",
      "ambar": "#F39C12", "verde": "#27AE60", "rojo": "#E74C3C",
      "conc": "#2E86C1", "normal": "#AED6F1"}
 
 
 class GeneradorGraficas:
-    def __init__(self, resultado: ResultadoAnalisis):
+    def __init__(self, resultado: ResultadoAnalisis, paleta: str = "corporativo",
+                 incluir_conclusion: bool = True, indices: list | None = None,
+                 color_personalizado: dict | None = None):
         self.r = resultado
+        # Resolver paleta de colores
+        if color_personalizado:
+            self.p = {**PALETAS["corporativo"], **color_personalizado}
+        else:
+            self.p = PALETAS.get(paleta, PALETAS["corporativo"])
+        self.incluir_conclusion = incluir_conclusion
+        self.indices_incluir = indices or list(RANGOS.keys())
 
     def _buf(self, fig) -> bytes:
         b = io.BytesIO()
@@ -802,12 +825,16 @@ class GeneradorGraficas:
         etq = [f["Rango"] for f in tabla.filas]
         freq = [f["Frecuencia"] for f in tabla.filas]
         hi_vals = [f["_hi_raw"] for f in tabla.filas]
-        colores = [C["conc"] if f["Rango"] == tabla.rango_concentrado else C["normal"]
+        colores = [self.p["bar_activa"] if f["Rango"] == tabla.rango_concentrado else self.p["bar_normal"]
                    for f in tabla.filas]
 
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5),
-                                        gridspec_kw={"width_ratios": [2, 1]})
-        fig.suptitle(nav["titulo"], fontsize=12, fontweight="bold", color=C["azul"], y=1.01)
+        if self.incluir_conclusion:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5),
+                                            gridspec_kw={"width_ratios": [2, 1]})
+        else:
+            fig, ax1 = plt.subplots(1, 1, figsize=(10, 5))
+            ax2 = None
+        fig.suptitle(nav["titulo"], fontsize=12, fontweight="bold", color=self.p["titulo"], y=1.01)
 
         # Histograma
         bars = ax1.bar(range(len(etq)), freq, color=colores, edgecolor="white", linewidth=0.8)
@@ -822,13 +849,13 @@ class GeneradorGraficas:
         for bar, f in zip(bars, freq):
             if f > 0:
                 ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.15,
-                         str(f), ha="center", fontsize=8, color=C["azul"])
+                         str(f), ha="center", fontsize=8, color=self.p["titulo"])
 
         # Hi en eje secundario
         ax1b = ax1.twinx()
         ax1b.plot(range(len(etq)), [h * 100 for h in hi_vals],
-                  color=C["ambar"], linewidth=2, marker="o", markersize=4, label="Hi (%)")
-        ax1b.axhline(self.r.config.hi_umbral * 100, color=C["rojo"],
+                  color=self.p["linea"], linewidth=2, marker="o", markersize=4, label="Hi (%)")
+        ax1b.axhline(self.r.config.hi_umbral * 100, color=self.p["ref"],
                      linewidth=1.5, linestyle="--", alpha=0.7,
                      label=f"Umbral {self.r.config.hi_umbral:.0%}")
         ax1b.set_ylabel("Hi acumulada (%)", fontsize=10)
@@ -838,11 +865,14 @@ class GeneradorGraficas:
         # Línea objetivo empresa (modo B)
         if res.objetivo_empresa is not None:
             pos = self._pos_rango(tabla, res.objetivo_empresa)
-            ax1.axvline(pos, color=C["rojo"], linewidth=2, linestyle=":",
+            ax1.axvline(pos, color=self.p["ref"], linewidth=2, linestyle=":",
                         label=f"Objetivo: {res.objetivo_empresa:g}")
             ax1.legend(fontsize=8)
 
-        # Panel de conclusión
+        # Panel de conclusión (solo si se incluye)
+        if ax2 is None:
+            plt.tight_layout()
+            return self._buf(fig)
         ax2.axis("off")
         ax2.set_facecolor("#F8FBFF")
         y = 0.97
@@ -852,18 +882,18 @@ class GeneradorGraficas:
                      color=color, transform=ax2.transAxes, va="top")
             return y - 0.07 * (1 + texto.count("\n") * 0.5)
 
-        y = txt("Conclusión", y, size=11, bold=True, color=C["azul"])
+        y = txt("Conclusión", y, size=11, bold=True, color=self.p["titulo"])
         for linea in self._wrap(tabla.narrativa, 42):
             y = txt(linea, y, size=8.5)
         y -= 0.04
         sym = "≥" if DIRECCION[indice] == "mayor" else "≤"
-        y = txt(f"Índice recomendado:", y, bold=True, color=C["azul2"])
-        y = txt(f"  {indice} {sym} {tabla.indice_recomendado:g}", y, size=13, bold=True, color=C["verde"])
-        y = txt(f"  Cubre el {tabla.pct_cumplen:.0%} del sector", y, size=9, color=C["azul2"])
+        y = txt(f"Índice recomendado:", y, bold=True, color=self.p["bar_activa"])
+        y = txt(f"  {indice} {sym} {tabla.indice_recomendado:g}", y, size=13, bold=True, color="#27AE60")
+        y = txt(f"  Cubre el {tabla.pct_cumplen:.0%} del sector", y, size=9, color=self.p["bar_activa"])
 
         if res.objetivo_empresa is not None:
             y -= 0.04
-            y = txt("Objetivo empresa:", y, bold=True, color=C["rojo"])
+            y = txt("Objetivo empresa:", y, bold=True, color=self.p["ref"])
             y = txt(f"  {indice} {sym} {res.objetivo_empresa:g}", y, size=12, bold=True, color=C["rojo"])
             y = txt(f"  Cubre el {res.pct_sector_cumple:.0%} del sector", y, size=9, color=C["rojo"])
 
@@ -885,7 +915,7 @@ class GeneradorGraficas:
         ax.set_yticks(list(y))
         ax.set_yticklabels(merged["Departamento"].tolist(), fontsize=9)
         ax.set_title(f"Distribución geográfica — Población ({self.r.n_poblacion}) vs Muestra ({self.r.n_muestra})",
-                     fontsize=11, fontweight="bold", color=C["azul"])
+                     fontsize=11, fontweight="bold", color=self.p["titulo"])
         ax.legend(fontsize=9)
         ax.grid(axis="x", alpha=0.3, linestyle="--")
         ax.set_facecolor("#F8FBFF")
@@ -901,7 +931,7 @@ class GeneradorGraficas:
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
         fig.suptitle("Resumen de Índices Recomendados",
-                     fontsize=13, fontweight="bold", color=C["azul"])
+                     fontsize=13, fontweight="bold", color=self.p["titulo"])
 
         bars1 = ax1.bar(indices, recom, color=C["conc"], edgecolor="white")
         ax1.set_title("Valor recomendado por índice", fontsize=11)
@@ -915,7 +945,7 @@ class GeneradorGraficas:
             ax1.text(bar.get_x() + bar.get_width() / 2,
                      bar.get_height() + max(recom) * 0.02,
                      f"{sym}{v:g}", ha="center", fontsize=10,
-                     fontweight="bold", color=C["azul"])
+                     fontweight="bold", color=self.p["titulo"])
 
         bars2 = ax2.bar(indices, pcts, color=C["verde"], edgecolor="white")
         ax2.axhline(self.r.config.hi_umbral * 100, color=C["rojo"],
@@ -931,7 +961,7 @@ class GeneradorGraficas:
         for bar, p in zip(bars2, pcts):
             ax2.text(bar.get_x() + bar.get_width() / 2,
                      bar.get_height() + 1.5,
-                     f"{p:.0f}%", ha="center", fontsize=9, color=C["azul"])
+                     f"{p:.0f}%", ha="center", fontsize=9, color=self.p["titulo"])
 
         fig.tight_layout()
         return self._buf(fig)
@@ -943,7 +973,8 @@ class GeneradorGraficas:
             zf.writestr("00_departamentos.png", self.distribucion_departamentos())
             zf.writestr("00_resumen_indices.png", self.panel_resumen())
             for idx in RANGOS:
-                zf.writestr(f"{idx}_frecuencias.png", self.histograma_indice(idx))
+                if idx in self.indices_incluir:
+                    zf.writestr(f"{idx}_frecuencias.png", self.histograma_indice(idx))
         return buf.getvalue()
 
     @staticmethod

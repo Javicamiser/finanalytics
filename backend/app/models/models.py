@@ -64,9 +64,9 @@ class DatasetSIIS(Base):
     n_ciius     = Column(Integer, nullable=False)
     activo      = Column(Boolean, default=True, nullable=False)
     admin_id    = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
-    notas       = Column(Text, nullable=True)
-    periodo_datos = Column(String(20), nullable=True)
-    
+    notas          = Column(Text, nullable=True)
+    periodo_datos  = Column(String(20), nullable=True)   # "2024-12-31" — detectado al cargar
+
     empresas    = relationship("EmpresaSIIS", back_populates="dataset")
 
 
@@ -85,7 +85,7 @@ class EmpresaSIIS(Base):
     # ── Identificación ──────────────────────────────────────────────────────
     nit          = Column(String(20),  nullable=True, index=True)
     razon_social = Column(String(500), nullable=True)
-    ciiu = Column(String(300), nullable=True, index=True)
+    ciiu         = Column(String(10),  nullable=True, index=True)
     departamento = Column(String(100), nullable=True, index=True)
     ciudad       = Column(String(100), nullable=True)
 
@@ -119,6 +119,7 @@ class Analisis(Base):
     # Metadata
     n_poblacion     = Column(Integer, nullable=True)
     n_muestra       = Column(Integer, nullable=True)
+    nombre          = Column(String(200), nullable=True)    # nombre personalizado del análisis
     credito_usado   = Column(Boolean, default=False)
     creado_en       = Column(DateTime, default=datetime.utcnow, nullable=False)
 

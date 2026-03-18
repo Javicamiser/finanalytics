@@ -2,6 +2,7 @@ import { useState } from 'react'
 import TablaFrecuencia from '../components/tables/TablaFrecuencia'
 import GraficaFrecuencia from '../components/charts/GraficaFrecuencia'
 import { analisisService } from '../services/api'
+import PanelPersonalizacion from '../components/ui/PanelPersonalizacion'
 import toast from 'react-hot-toast'
 
 const INDICES_INFO = {
@@ -21,6 +22,7 @@ const COLOR_SIMILITUD = (similar, diff_pct) => {
 
 export default function ResultadoAnalisis({ resultado }) {
   const [descargando, setDescargando] = useState(false)
+  const [mostrarPanel, setMostrarPanel] = useState(false)
   if (!resultado?.resultado_json) return null
 
   const { config, resumen, geografico, indices } = resultado.resultado_json
@@ -77,7 +79,7 @@ export default function ResultadoAnalisis({ resultado }) {
             className="bg-white text-[#1F4E8C] font-semibold px-5 py-2 rounded-lg text-sm hover:bg-blue-50 transition disabled:opacity-50">
             ⬇ Descargar Excel
           </button>
-          <button onClick={() => descargar('graficas')} disabled={descargando}
+          <button onClick={() => setMostrarPanel(true)} disabled={descargando}
             className="bg-white/20 text-white font-semibold px-5 py-2 rounded-lg text-sm hover:bg-white/30 transition disabled:opacity-50">
             ⬇ Descargar Gráficas
           </button>
@@ -286,6 +288,13 @@ export default function ResultadoAnalisis({ resultado }) {
             <p key={i} className="text-sm text-yellow-700">• {a}</p>
           ))}
         </div>
+      )}
+      {mostrarPanel && (
+        <PanelPersonalizacion
+          analisisId={resultado.id}
+          indices={indices}
+          onClose={() => setMostrarPanel(false)}
+        />
       )}
     </div>
   )
