@@ -85,7 +85,7 @@ class EmpresaSIIS(Base):
     # ── Identificación ──────────────────────────────────────────────────────
     nit          = Column(String(20),  nullable=True, index=True)
     razon_social = Column(String(500), nullable=True)
-    ciiu         = Column(String(10),  nullable=True, index=True)
+    ciiu = Column(String(300), nullable=True, index=True)
     departamento = Column(String(100), nullable=True, index=True)
     ciudad       = Column(String(100), nullable=True)
 

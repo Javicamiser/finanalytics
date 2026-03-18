@@ -43,7 +43,8 @@ class ConfigAnalisisIn(BaseModel):
     porcentaje_muestra: float = 0.03
     hi_umbral: float = 0.59
     año_datos: int | None = None
-    dataset_id: int | None = None            # None = usar el más reciente
+    dataset_id: int | None = None
+    n_empresas_b: int | None = None           # Modo B: número fijo de empresas            # None = usar el más reciente
 
     @field_validator("ciius")
     @classmethod
@@ -89,6 +90,7 @@ class DatasetOut(BaseModel):
     n_ciius: int
     activo: bool
     notas: str | None
+    periodo_datos: str | None   # "2024-12-31" — corte detectado automáticamente
     class Config:
         from_attributes = True
 

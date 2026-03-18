@@ -1,5 +1,5 @@
 /**
- * TablаFrecuencia — reproduce exactamente la tabla del documento SETP
+ * TablаFrecuencia — tabla de distribución de frecuencias — Rango · Freq · % · Hi · Empresas
  * Rango | Frecuencia | % | Hi | Empresas
  * La fila del rango concentrado se resalta en azul.
  */

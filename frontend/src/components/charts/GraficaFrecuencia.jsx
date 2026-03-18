@@ -1,5 +1,5 @@
 /**
- * GraficaFrecuencia — reproduce las gráficas del documento SETP
+ * GraficaFrecuencia — gráfica de distribución de frecuencias por índice
  * Barras azules (Frecuencia) + línea amarilla (Empresas acumuladas Hi)
  */
 import {

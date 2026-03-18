@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuthStore } from './store/authStore'
+import { analisisService } from './services/api'
 import Login from './pages/Login'
 import NuevoAnalisis from './pages/NuevoAnalisis'
 import ResultadoAnalisis from './pages/ResultadoAnalisis'
@@ -12,6 +13,32 @@ function RequireAuth({ children }) {
   const token = useAuthStore(s => s.token)
   if (!token) return <Navigate to="/login" replace />
   return children
+}
+
+function AnalisisPage() {
+  const { id } = useParams()
+  const [resultado, setResultado] = useState(null)
+  const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    analisisService.obtener(id)
+      .then(setResultado)
+      .catch(() => setError('No se pudo cargar el análisis'))
+      .finally(() => setCargando(false))
+  }, [id])
+
+  if (cargando) return (
+    <div className="flex items-center justify-center h-64">
+      <p className="text-gray-500">Cargando análisis...</p>
+    </div>
+  )
+  if (error) return (
+    <div className="flex items-center justify-center h-64">
+      <p className="text-red-500">{error}</p>
+    </div>
+  )
+  return <ResultadoAnalisis resultado={resultado} />
 }
 
 export default function App() {
@@ -26,24 +53,10 @@ export default function App() {
         <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
           <Route index element={<Dashboard />} />
           <Route path="nuevo" element={<NuevoAnalisis />} />
-          <Route path="analisis/:id" element={<AnalisisWrapper />} />
+          <Route path="analisis/:id" element={<AnalisisPage />} />
         </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )
-}
-
-function AnalisisWrapper() {
-  const { id } = require('react-router-dom').useParams()
-  const [resultado, setResultado] = require('react').useState(null)
-  const [cargando, setCargando] = require('react').useState(true)
-
-  require('react').useEffect(() => {
-    require('./services/api').analisisService.obtener(id)
-      .then(setResultado).finally(() => setCargando(false))
-  }, [id])
-
-  if (cargando) return <div className="p-8 text-center text-gray-500">Cargando análisis...</div>
-  if (!resultado) return <div className="p-8 text-center text-red-500">Análisis no encontrado</div>
-  return <ResultadoAnalisis resultado={resultado} />
 }

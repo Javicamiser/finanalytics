@@ -38,6 +38,8 @@ export const authService = {
 export const analisisService = {
   ejecutar: (config) =>
     api.post('/api/analisis/ejecutar', config).then(r => r.data),
+  calcularHi: (ciius, porcentaje_muestra) =>
+    api.post('/api/analisis/calcular-hi', { ciius, porcentaje_muestra }).then(r => r.data),
   listar: (skip = 0, limit = 20) =>
     api.get(`/api/analisis/?skip=${skip}&limit=${limit}`).then(r => r.data),
   obtener: (id) =>

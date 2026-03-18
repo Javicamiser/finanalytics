@@ -3,7 +3,7 @@ FinAnalytics — Motor de Análisis Financiero
 ============================================
 Implementa la metodología real usada en estudios de sector para Colombia
 (Decreto 1082/2015, Colombia Compra Eficiente), tal como se documenta
-en los análisis de sector del tipo SETP / Supersociedades.
+para análisis de sector bajo Decreto 1082/2015 (Colombia Compra Eficiente).
 
 Metodología objetiva (Modo A):
   1. Filtrar empresas del sector por CIIU
@@ -56,7 +56,7 @@ COL = {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  RANGOS FIJOS POR ÍNDICE (exactos del documento SETP)
+#  RANGOS FIJOS POR ÍNDICE — metodología de análisis sectorial colombiano
 #  Tupla: (etiqueta, lim_inferior, lim_superior)   None = abierto
 # ─────────────────────────────────────────────────────────────────────────────
 RANGOS = {
@@ -149,6 +149,8 @@ class ConfigAnalisis:
     hi_umbral: float = HI_UMBRAL
     seed: int = 42
     año_datos: int | None = None
+    # Modo B: número fijo de empresas a seleccionar (si None usa porcentaje_muestra)
+    n_empresas_b: int | None = None
 
     def validar(self):
         if not self.ciius:
@@ -173,6 +175,10 @@ class TablaFrecuencia:
     hi_concentrado: float
     pct_cumplen: float
     narrativa: str
+    # Umbral sugerido por segunda derivada (punto de inflexión real de la curva Hi)
+    umbral_sugerido: float | None = None       # ej: 0.59
+    indice_recomendado_sugerido: float | None = None  # índice con umbral sugerido
+    rango_concentrado_sugerido: str | None = None
 
 
 @dataclass
@@ -183,6 +189,11 @@ class ResultadoIndice:
     pct_sector_cumple: float | None = None
     indice_inclusivo: float | None = None
     narrativa_b: str | None = None
+    # Modo B nuevo: métricas de cercanía al objetivo
+    promedio_grupo: float | None = None        # promedio del índice en el grupo seleccionado
+    diferencia_abs: float | None = None        # |promedio - objetivo|
+    diferencia_pct: float | None = None        # diferencia relativa al objetivo
+    cumple_objetivo: bool | None = None        # promedio <= objetivo (IE) o >= objetivo (resto)
 
 
 @dataclass
@@ -195,6 +206,8 @@ class ResultadoAnalisis:
     resultados: dict[str, ResultadoIndice]
     df_muestra: pd.DataFrame
     advertencias: list[str] = field(default_factory=list)
+    # Modo B: resumen global de cercanía al objetivo
+    resumen_modo_b: dict | None = None
 
     def a_dict(self) -> dict[str, Any]:
         return {
@@ -203,12 +216,15 @@ class ResultadoAnalisis:
                 "modo": self.config.modo,
                 "indices_empresa": self.config.indices_empresa,
                 "porcentaje_muestra": self.config.porcentaje_muestra,
+                "n_empresas_b": self.config.n_empresas_b,
+                "hi_umbral": self.config.hi_umbral,
                 "año_datos": self.config.año_datos,
             },
             "resumen": {
                 "n_poblacion": self.n_poblacion,
                 "n_muestra": self.n_muestra,
                 "advertencias": self.advertencias,
+                "resumen_modo_b": self.resumen_modo_b,
             },
             "geografico": {
                 "poblacion": self.tabla_poblacion.to_dict("records"),
@@ -223,6 +239,9 @@ class ResultadoAnalisis:
                     "rango_concentrado": res.tabla.rango_concentrado,
                     "indice_recomendado": res.tabla.indice_recomendado,
                     "hi_concentrado": res.tabla.hi_concentrado,
+                    "umbral_sugerido": res.tabla.umbral_sugerido,
+                    "indice_recomendado_sugerido": res.tabla.indice_recomendado_sugerido,
+                    "rango_concentrado_sugerido": res.tabla.rango_concentrado_sugerido,
                     "pct_cumplen": res.tabla.pct_cumplen,
                     "narrativa": res.tabla.narrativa,
                     "objetivo_empresa": res.objetivo_empresa,
@@ -230,6 +249,10 @@ class ResultadoAnalisis:
                     "pct_sector_cumple": res.pct_sector_cumple,
                     "indice_inclusivo": res.indice_inclusivo,
                     "narrativa_b": res.narrativa_b,
+                    "promedio_grupo": res.promedio_grupo,
+                    "diferencia_abs": res.diferencia_abs,
+                    "diferencia_pct": res.diferencia_pct,
+                    "cumple_objetivo": res.cumple_objetivo,
                 }
                 for idx, res in self.resultados.items()
             },
@@ -259,23 +282,47 @@ class MotorAnalisis:
         n_muestra = len(df_muestra)
         tabla_mue = self._tabla_geo(df_muestra)
 
-        if n_muestra < 10:
-            advertencias.append(
-                f"Muestra pequeña ({n_muestra} empresas). "
-                "Considere ampliar los CIIUs o el porcentaje de muestra."
-            )
+        if n_muestra < 30:
+            if n_muestra < 10:
+                advertencias.append(
+                    f"⚠ Muestra muy pequeña ({n_muestra} empresas). "
+                    "Los resultados pueden no ser representativos del sector. "
+                    "Se recomienda ampliar los CIIUs seleccionados o aumentar el porcentaje de muestra."
+                )
+            else:
+                advertencias.append(
+                    f"⚠ Muestra pequeña ({n_muestra} empresas). "
+                    "Para mayor precisión estadística se recomienda una muestra de al menos 30 empresas. "
+                    "Considere ampliar los CIIUs seleccionados o el porcentaje de muestra."
+                )
 
         df_muestra = self._calcular_indices(df_muestra)
 
         resultados = {}
-        for idx in RANGOS:
-            serie = df_muestra[idx].dropna()
-            tabla = self._tabla_frecuencias(idx, serie, config.hi_umbral)
-            if config.modo == "B" and config.indices_empresa:
-                res = self._modo_b(tabla, config.indices_empresa[idx], idx, serie)
-            else:
-                res = ResultadoIndice(tabla=tabla)
-            resultados[idx] = res
+        resumen_modo_b = None
+
+        if config.modo == "B" and config.indices_empresa:
+            # ── MODO B: selección por optimización ────────────────────────
+            # Determinar N objetivo
+            n_obj_b = config.n_empresas_b if config.n_empresas_b else max(10, round(n_poblacion * config.porcentaje_muestra))
+            # Seleccionar el grupo óptimo cuyo promedio minimiza distancia a objetivos
+            df_grupo, resumen_modo_b = self._seleccionar_grupo_modo_b(
+                df_sector, config.indices_empresa, n_obj_b, config.seed
+            )
+            df_muestra = df_grupo  # el grupo seleccionado ES la muestra del Modo B
+            n_muestra = len(df_muestra)
+
+            for idx in RANGOS:
+                serie = df_muestra[idx].dropna()
+                tabla = self._tabla_frecuencias(idx, serie, config.hi_umbral)
+                res = self._modo_b_metricas(tabla, config.indices_empresa[idx], idx, serie, resumen_modo_b)
+                resultados[idx] = res
+        else:
+            # ── MODO A: distribución del sector ───────────────────────────
+            for idx in RANGOS:
+                serie = df_muestra[idx].dropna()
+                tabla = self._tabla_frecuencias(idx, serie, config.hi_umbral)
+                resultados[idx] = ResultadoIndice(tabla=tabla)
 
         return ResultadoAnalisis(
             config=config,
@@ -286,6 +333,7 @@ class MotorAnalisis:
             resultados=resultados,
             df_muestra=df_muestra,
             advertencias=advertencias,
+            resumen_modo_b=resumen_modo_b,
         )
 
     # ── FILTRO CIIU ────────────────────────────────────────────────────────
@@ -339,8 +387,18 @@ class MotorAnalisis:
         df["CT"]  = ac - pc
         df["IL"]  = ac / pc.replace(0, eps)
         df["IE"]  = pt / at.replace(0, eps)
-        df["RCI"] = uo / gi.replace(0, eps)
-        df["RP"]  = uo / pa.replace(0, eps)
+
+        # RCI: si costos financieros es 0 o casi 0, el índice no aplica (NaN)
+        # No tiene sentido calcular cobertura de intereses si no hay intereses
+        gi_safe = gi.copy()
+        gi_safe[gi_safe.abs() < 1.0] = np.nan   # menos de $1.000 en costos fin. → NaN
+        df["RCI"] = uo / gi_safe
+
+        # RP y RA: si denominador es casi 0 o negativo extremo, NaN
+        pa_safe = pa.copy()
+        pa_safe[pa_safe.abs() < 1.0] = np.nan
+        df["RP"]  = uo / pa_safe
+
         df["RA"]  = uo / at.replace(0, eps)
 
         for idx in ["IL", "IE", "RCI", "RP", "RA"]:
@@ -350,7 +408,7 @@ class MotorAnalisis:
     # ── TABLA DE FRECUENCIAS ───────────────────────────────────────────────
     def _tabla_frecuencias(self, indice, serie, hi_umbral) -> TablaFrecuencia:
         """
-        Construye la tabla exactamente como el documento SETP:
+        Construye la tabla de distribución de frecuencias:
         Rango | Frecuencia | % | Hi acumulada | N empresas acumuladas
 
         IL, RCI, RP, RA → Hi descendente: Hi[rango] = % empresas con valor ≥ lim_inf[rango]
@@ -395,26 +453,31 @@ class MotorAnalisis:
                 f["hi"] = acum / n
                 f["n_acum"] = acum
 
-        # Identificar rango concentrado
+        # ── Identificar rango concentrado (método original: umbral fijo) ────
         rango_conc = None
         idx_rec = 0.0
         hi_conc = 0.0
 
         if direccion == "mayor":
-            # Último rango donde Hi aún >= umbral
-            # (igual que el doc: Hi=59% en 1.5–1.99 → recomendación IL ≥ 2.0)
+            # Hi baja conforme sube el rango (0-0.99 tiene Hi=100%, 4.50+ tiene Hi=10%).
+            # El rango concentrado es el ÚLTIMO rango donde Hi >= umbral antes de caer.
+            # Iteramos y guardamos mientras se cumple — cuando deja de cumplirse, paramos.
             for f in filas:
                 if f["hi"] >= hi_umbral - 0.005:
                     rango_conc = f["etiq"]
-                    hi_conc = f["hi"]
-                    idx_rec = f["ls"] if f["ls"] is not None else (f["li"] or 0.0)
+                    hi_conc    = f["hi"]
+                    idx_rec    = f["ls"] if f["ls"] is not None else (f["li"] or 0.0)
+                else:
+                    # Una vez que Hi cae por debajo del umbral, no puede volver a subir
+                    # (la Hi descendente es monótona). Paramos aquí.
+                    break
         else:
-            # Primer rango donde Hi >= umbral (IE)
+            # IE: Hi sube conforme sube el rango. Tomamos el PRIMER rango que alcanza el umbral.
             for f in filas:
                 if f["hi"] >= hi_umbral - 0.005 and rango_conc is None:
                     rango_conc = f["etiq"]
-                    hi_conc = f["hi"]
-                    idx_rec = f["ls"] if f["ls"] is not None else 1.0
+                    hi_conc    = f["hi"]
+                    idx_rec    = f["ls"] if f["ls"] is not None else 1.0
 
         if rango_conc is None:
             ultimo = filas[-1]
@@ -422,7 +485,27 @@ class MotorAnalisis:
             hi_conc = ultimo["hi"]
             idx_rec = ultimo["ls"] if ultimo["ls"] is not None else (ultimo["li"] or 0.0)
 
-        # Narrativa
+        # ── Umbral sugerido por segunda derivada (punto de inflexión real) ──
+        # Δ¹[i] = Hi[i+1] - Hi[i]  →  cambio de pendiente entre rangos
+        # Δ²[i] = Δ¹[i+1] - Δ¹[i] →  aceleración del cambio
+        # El punto de inflexión real es donde |Δ²| es máximo.
+        umbral_sug = None
+        idx_rec_sug = None
+        rango_conc_sug = None
+
+        his = [f["hi"] for f in filas]
+        if len(his) >= 3:
+            d1 = [his[i+1] - his[i] for i in range(len(his)-1)]
+            d2 = [abs(d1[i+1] - d1[i]) for i in range(len(d1)-1)]
+            # El índice del máximo |Δ²| corresponde al rango i+1 en filas
+            pos_inflexion = d2.index(max(d2)) + 1  # +1 porque d2 empieza en índice 1
+            pos_inflexion = min(pos_inflexion, len(filas) - 1)
+            f_inf = filas[pos_inflexion]
+            umbral_sug = round(f_inf["hi"], 4)
+            idx_rec_sug = f_inf["ls"] if f_inf["ls"] is not None else (f_inf["li"] or 0.0)
+            rango_conc_sug = f_inf["etiq"]
+
+        # Narrativa (usa el umbral fijo para mantener compatibilidad)
         narrativa = self._narrativa_conclusion(indice, rango_conc, idx_rec, hi_conc, n, direccion)
 
         # Formatear filas de salida
@@ -449,6 +532,9 @@ class MotorAnalisis:
             hi_concentrado=round(hi_conc, 4),
             pct_cumplen=round(hi_conc, 4),
             narrativa=narrativa,
+            umbral_sugerido=umbral_sug,
+            indice_recomendado_sugerido=round(idx_rec_sug, 4) if idx_rec_sug is not None else None,
+            rango_concentrado_sugerido=rango_conc_sug,
         )
 
     def _narrativa_conclusion(self, indice, rango_conc, idx_rec, hi_conc, n_total, direccion):
@@ -537,6 +623,150 @@ class MotorAnalisis:
             narrativa_b=narrativa_b,
         )
 
+
+
+    # ── MODO B: SELECCIÓN POR OPTIMIZACIÓN ────────────────────────────────
+    def _seleccionar_grupo_modo_b(self, df_sector, indices_objetivo, n_obj, seed):
+        """
+        Modo B — encuentra las N empresas del sector con perfil más similar
+        al de la empresa participante (distancia mínima en espacio normalizado).
+
+        El resultado justifica que existe una muestra representativa del sector
+        con un perfil financiero parecido, validando los requisitos del pliego.
+        """
+        df = self._calcular_indices(df_sector.copy())
+        cols_idx = list(RANGOS.keys())
+        # Índices obligatorios para calcular distancia (IL e IE siempre disponibles)
+        # RCI puede ser NaN para empresas sin deuda financiera — no excluirlas
+        cols_obligatorios = ["IL", "IE"]
+        cols_disp = [c for c in cols_idx if df[c].notna().sum() > 0]
+        df_valido = df.dropna(subset=cols_obligatorios).reset_index(drop=True)
+
+        if len(df_valido) == 0:
+            return df_sector.head(n_obj), None
+
+        n_sel = min(n_obj, len(df_valido))
+
+        # Distancia euclidiana usando percentil rank (robusto a outliers)
+        # Se calcula por empresa usando solo los índices disponibles (ignora NaN)
+        dist_mat = pd.DataFrame(index=df_valido.index)
+        for idx in cols_disp:
+            col = df_valido[idx]
+            # rank solo sobre valores válidos de esa columna
+            col_norm = col.rank(pct=True)          # NaN → NaN (no participa)
+            n_menores = (col < indices_objetivo[idx]).sum()
+            obj_norm  = n_menores / col.notna().sum() if col.notna().sum() > 0 else 0.5
+            dist_mat[idx] = (col_norm - obj_norm) ** 2
+
+        # Promedio de dimensiones disponibles por empresa (no suma — evita penalizar NaN)
+        dist = dist_mat.mean(axis=1)   # mean ignora NaN por defecto
+        df_valido["_dist"] = dist
+        df_valido = df_valido.sort_values("_dist", na_position="last").reset_index(drop=True)
+        grupo = df_valido.head(n_sel).drop(columns=["_dist"], errors="ignore")
+
+        # Métricas por índice
+        resumen = {}
+        for idx in cols_idx:
+            objetivo  = indices_objetivo[idx]
+            direccion = DIRECCION[idx]
+            serie_g   = grupo[idx].dropna()
+            serie_p   = df_valido[idx].dropna()
+            promedio  = float(serie_g.mean()) if len(serie_g) > 0 else 0.0
+            diff_abs  = abs(promedio - objetivo)
+            diff_pct  = (diff_abs / abs(objetivo) * 100) if objetivo != 0 else 0.0
+
+            # % del sector que cumple el índice (para la narrativa del pliego)
+            if direccion == "mayor":
+                n_pob = int((serie_p >= objetivo).sum())
+            else:
+                n_pob = int((serie_p <= objetivo).sum())
+            pct_pob = n_pob / len(serie_p) if len(serie_p) > 0 else 0.0
+
+            # Empresas del grupo con índice similar (±30%)
+            margen = abs(objetivo) * 0.30
+            n_sim  = int(((serie_g >= objetivo - margen) & (serie_g <= objetivo + margen)).sum())                      if objetivo != 0 else len(serie_g)
+
+            resumen[idx] = {
+                "objetivo":          round(objetivo, 4),
+                "promedio_grupo":    round(promedio, 4),
+                "diferencia_abs":    round(diff_abs, 4),
+                "diferencia_pct":    round(diff_pct, 2),
+                "similar":           diff_pct <= 25,
+                "n_similares_grupo": n_sim,
+                "n_pob_cumple":      n_pob,
+                "pct_pob_cumple":    round(pct_pob, 4),
+                "n_empresas":        len(grupo),
+                "evaluacion":        self._evaluar_similitud(diff_pct, pct_pob),
+            }
+
+        return grupo, resumen
+
+    def _evaluar_similitud(self, diff_pct, pct_pob_cumple=0):
+        """Evalúa qué tan representativo es el grupo respecto al perfil de la empresa."""
+        pct_str = f"{pct_pob_cumple:.0%}"
+        if diff_pct <= 10:
+            return f"Muy similar — el promedio del grupo es casi igual al índice de la empresa. {pct_str} del sector cumple este valor"
+        elif diff_pct <= 25:
+            return f"Similar — el grupo tiene un perfil financiero parecido. {pct_str} del sector cumple este valor"
+        elif diff_pct <= 50:
+            return f"Moderadamente similar — hay diferencia pero el sector tiene empresas cercanas. {pct_str} del sector cumple"
+        else:
+            if pct_pob_cumple < 0.05:
+                return f"Muy diferente — solo el {pct_str} del sector tiene este índice. El requisito puede ser muy exigente para el sector"
+            return f"Diferente — el sector tiene un perfil distinto en este índice. {pct_str} del sector cumple"
+
+
+    def _modo_b_metricas(self, tabla, objetivo, indice, serie, resumen_global) -> ResultadoIndice:
+        """Construye ResultadoIndice para Modo B con métricas de cercanía."""
+        direccion = DIRECCION[indice]
+        n = len(serie)
+        nombre = NARRATIVA[indice]["titulo"].split("(")[0].strip().lower()
+        sym = "≥" if direccion == "mayor" else "≤"
+
+        # Rango donde cae el objetivo
+        rango_obj = None
+        for f in tabla.filas:
+            li, ls = f["_li"], f["_ls"]
+            if li is None and ls is not None and objetivo < ls:
+                rango_obj = f["Rango"]; break
+            elif ls is None and li is not None and objetivo >= li:
+                rango_obj = f["Rango"]; break
+            elif li is not None and ls is not None and li <= objetivo < ls:
+                rango_obj = f["Rango"]; break
+
+        # % del sector (población) que cumple el objetivo
+        pct_cumple = float((serie >= objetivo).sum()) / n if direccion == "mayor" and n > 0 else                      float((serie <= objetivo).sum()) / n if n > 0 else 0.0
+
+        metricas = resumen_global.get(indice, {}) if resumen_global else {}
+        promedio_grupo = metricas.get("promedio_grupo")
+        diff_abs = metricas.get("diferencia_abs")
+        diff_pct = metricas.get("diferencia_pct")
+        cumple = metricas.get("cumple_objetivo")
+        evaluacion = metricas.get("evaluacion", "")
+
+        val_obj = f"{objetivo:.0%}" if indice in ("IE", "RP", "RA") else f"{objetivo:g}"
+        val_prom = f"{promedio_grupo:.0%}" if indice in ("IE", "RP", "RA") else f"{promedio_grupo:g}" if promedio_grupo is not None else "N/D"
+
+        narrativa_b = (
+            f"Objetivo para {nombre}: {indice} {sym} {val_obj}. "
+            f"El promedio del grupo seleccionado es {val_prom} "
+            f"({'cumple' if cumple else 'no cumple'} el objetivo). "
+            f"Diferencia: {diff_pct:.1f}%. "
+            f"Evaluación: {evaluacion}."
+        )
+
+        return ResultadoIndice(
+            tabla=tabla,
+            objetivo_empresa=objetivo,
+            rango_objetivo=rango_obj,
+            pct_sector_cumple=round(pct_cumple, 4),
+            indice_inclusivo=tabla.indice_recomendado,
+            narrativa_b=narrativa_b,
+            promedio_grupo=promedio_grupo,
+            diferencia_abs=diff_abs,
+            diferencia_pct=diff_pct,
+            cumple_objetivo=cumple,
+        )
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  GENERADOR DE GRÁFICAS

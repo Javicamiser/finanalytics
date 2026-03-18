@@ -150,7 +150,7 @@ def cargar_excel_siis(
             # Identificación
             nit          = get_str("nit", 20),
             razon_social = get_str("nombre", 500),
-            ciiu         = get_str("ciiu", 10),
+            ciiu         = get_str("ciiu", 300),   # descripción completa ej: "F4290 - Construcción..."
             departamento = get_str("dpto", 100),
             ciudad       = get_str("ciudad", 100),
             # Solo las 7 cifras financieras necesarias para los índices
