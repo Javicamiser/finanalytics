@@ -114,7 +114,7 @@ function FilaAnalisis({ a, onRename }) {
       </div>
 
       {/* Acciones */}
-      <Link to={`/analisis/${a.id}`} style={{
+      <Link to={`/dashboard/analisis/${a.id}`} style={{
         fontSize: '12px', fontWeight: '600', color: PRIMARY[500],
         textDecoration: 'none', padding: '6px 12px',
         border: `1px solid ${PRIMARY[200]}`, borderRadius: '7px',
@@ -181,7 +181,7 @@ export default function Historial() {
             {analisis.length} análisis realizados
           </p>
         </div>
-        <Link to="/nuevo" style={{
+        <Link to="/dashboard/nuevo" style={{
           background: PRIMARY[500], color: '#fff', fontWeight: '600',
           padding: '9px 18px', borderRadius: '9px', fontSize: '13px',
           textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px',

@@ -1,5 +1,5 @@
 import io, zipfile
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.db.database import get_db
@@ -247,18 +247,20 @@ def descargar_excel(
     )
 
 
-@router.get("/{analisis_id}/graficas")
-def descargar_graficas(
+@router.post("/{analisis_id}/graficas")
+async def descargar_graficas(
     analisis_id: int,
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
-    # Personalización
+    # Personalización via query params
     paleta: str = "corporativo",
     incluir_conclusion: bool = True,
-    indices: str = "",                     # ej: "IL,IE,RCI" — vacío = todos
-    color_activa: str = "",                # hex personalizado para barra activa
-    color_normal: str = "",                # hex personalizado para barra normal
-    color_linea: str = "",                 # hex personalizado para línea Hi
+    indices: str = "",
+    color_activa: str = "",
+    color_normal: str = "",
+    color_linea: str = "",
+    # Marca de agua via form (opcional)
+    marca_agua: UploadFile | None = File(None),
 ):
     """Descarga un ZIP con gráficas PNG personalizadas del análisis."""
     if not _puede_descargar(user):
@@ -294,12 +296,18 @@ def descargar_graficas(
 
     indices_list = [i.strip().upper() for i in indices.split(",") if i.strip()] or None
 
+    # Leer marca de agua si se envió
+    marca_bytes = None
+    if marca_agua:
+        marca_bytes = await marca_agua.read()
+
     gen = GeneradorGraficas(
         resultado,
         paleta=paleta,
         incluir_conclusion=incluir_conclusion,
         indices=indices_list,
         color_personalizado=color_custom,
+        marca_agua=marca_bytes,
     )
     zip_bytes = gen.todas_como_zip()
 

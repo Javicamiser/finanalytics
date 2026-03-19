@@ -57,7 +57,7 @@ function AnalisisCard({ analisis }) {
   const modoColor = analisis.modo === 'A' ? PRIMARY[500] : '#8E44AD'
   const modoLabel = analisis.modo === 'A' ? 'Objetivo del sector' : 'Por objetivo empresa'
   return (
-    <Link to={`/analisis/${analisis.id}`} style={{ textDecoration: 'none' }}
+    <Link to={`/dashboard/analisis/${analisis.id}`} style={{ textDecoration: 'none' }}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <div style={{
         background: '#fff',
@@ -155,13 +155,13 @@ export default function Dashboard() {
           Acciones rápidas
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-          <AccionRapida to="/nuevo" titulo="Nuevo análisis" desc="Modo A u objetivo de empresa" color={PRIMARY[50]}>
+          <AccionRapida to="/dashboard/nuevo" titulo="Nuevo análisis" desc="Modo A u objetivo de empresa" color={PRIMARY[50]}>
             <Icon.Plus size={17} color={PRIMARY[500]} />
           </AccionRapida>
-          <AccionRapida to="/historial" titulo="Ver historial" desc="Todos tus análisis anteriores" color="#EBF5FB">
+          <AccionRapida to="/dashboard/historial" titulo="Ver historial" desc="Todos tus análisis anteriores" color="#EBF5FB">
             <Icon.History size={17} color={PRIMARY[500]} />
           </AccionRapida>
-          <AccionRapida to="/perfil" titulo="Configuración" desc="Perfil, plan y preferencias" color={GRAY[100]}>
+          <AccionRapida to="/dashboard/perfil" titulo="Configuración" desc="Perfil, plan y preferencias" color={GRAY[100]}>
             <Icon.Settings size={17} color={GRAY[500]} />
           </AccionRapida>
         </div>
@@ -173,7 +173,7 @@ export default function Dashboard() {
           <h2 style={{ fontSize: '13px', fontWeight: '600', color: GRAY[500], margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Análisis recientes
           </h2>
-          <Link to="/historial" style={{ fontSize: '12px', color: PRIMARY[500], fontWeight: '600', textDecoration: 'none' }}>
+          <Link to="/dashboard/historial" style={{ fontSize: '12px', color: PRIMARY[500], fontWeight: '600', textDecoration: 'none' }}>
             Ver todos →
           </Link>
         </div>
@@ -186,7 +186,7 @@ export default function Dashboard() {
               <Icon.FileText size={32} color={GRAY[300]} />
             </div>
             <p style={{ color: GRAY[400], fontSize: '13px', margin: '0 0 14px' }}>Aún no tienes análisis.</p>
-            <Link to="/nuevo" style={{ display: 'inline-block', background: PRIMARY[500], color: '#fff', padding: '8px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', textDecoration: 'none' }}>
+            <Link to="/dashboard/nuevo" style={{ display: 'inline-block', background: PRIMARY[500], color: '#fff', padding: '8px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', textDecoration: 'none' }}>
               Crear análisis
             </Link>
           </div>

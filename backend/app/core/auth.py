@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.config import settings
@@ -51,6 +51,16 @@ def get_current_user(
     ).first()
     if not user:
         raise exc
+
+    # Verificar que la sesión sigue siendo válida (sesión única por usuario)
+    sid = payload.get("sid")
+    if sid and user.session_token and sid != user.session_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sesión cerrada — se inició sesión desde otro dispositivo",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     return user
 
 

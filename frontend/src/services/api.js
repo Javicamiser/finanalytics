@@ -32,6 +32,16 @@ export const authService = {
     api.post('/api/auth/register', data).then(r => r.data),
   me: () =>
     api.get('/api/auth/me').then(r => r.data),
+  actualizarPerfil: (data) =>
+    api.patch('/api/auth/perfil', data).then(r => r.data),
+  cambiarPassword: (data) =>
+    api.post('/api/auth/cambiar-password', data).then(r => r.data),
+  listarUsuarios: () =>
+    api.get('/api/auth/usuarios').then(r => r.data),
+  actualizarUsuario: (uid, data) =>
+    api.patch(`/api/auth/usuarios/${uid}`, data).then(r => r.data),
+  refresh: () =>
+    api.post('/api/auth/refresh').then(r => r.data),
 }
 
 // ── Análisis ───────────────────────────────────────────────
@@ -40,10 +50,20 @@ export const analisisService = {
     api.post('/api/analisis/ejecutar', config).then(r => r.data),
   calcularHi: (ciius, porcentaje_muestra) =>
     api.post('/api/analisis/calcular-hi', { ciius, porcentaje_muestra }).then(r => r.data),
+  // Pagos
+  planes: () =>
+    api.get('/api/pagos/planes').then(r => r.data),
+  iniciarPago: (plan_id) =>
+    api.post('/api/pagos/iniciar', { plan_id }).then(r => r.data),
+  estadoPago: (ref) =>
+    api.get(`/api/pagos/estado/${ref}`).then(r => r.data),
+  historialPagos: () =>
+    api.get('/api/pagos/historial').then(r => r.data),
+
   renombrar: (id, nombre) =>
     api.patch(`/api/analisis/${id}/nombre`, { nombre }).then(r => r.data),
-  descargarGraficasPersonalizadas: (id, params) =>
-    api.get(`/api/analisis/${id}/graficas?${params}`, { responseType: 'blob' }).then(r => r.data),
+  descargarGraficasPersonalizadas: (id, params, formData) =>
+    api.post(`/api/analisis/${id}/graficas?${params}`, formData || new FormData(), { responseType: 'blob', headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data),
   listar: (skip = 0, limit = 20) =>
     api.get(`/api/analisis/?skip=${skip}&limit=${limit}`).then(r => r.data),
   obtener: (id) =>

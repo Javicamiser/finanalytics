@@ -2,6 +2,7 @@ import { useState } from 'react'
 import TablaFrecuencia from '../components/tables/TablaFrecuencia'
 import GraficaFrecuencia from '../components/charts/GraficaFrecuencia'
 import { analisisService } from '../services/api'
+import { useAuthStore } from '../store/authStore'
 import PanelPersonalizacion from '../components/ui/PanelPersonalizacion'
 import toast from 'react-hot-toast'
 
@@ -22,6 +23,8 @@ const COLOR_SIMILITUD = (similar, diff_pct) => {
 
 export default function ResultadoAnalisis({ resultado }) {
   const [descargando, setDescargando] = useState(false)
+  const user = useAuthStore(s => s.user)
+  const esFree = !user || user.plan === 'free'
   const [mostrarPanel, setMostrarPanel] = useState(false)
   if (!resultado?.resultado_json) return null
 
@@ -75,14 +78,22 @@ export default function ResultadoAnalisis({ resultado }) {
         </div>
 
         <div className="flex gap-3 mt-5">
-          <button onClick={() => descargar('excel')} disabled={descargando}
-            className="bg-white text-[#1F4E8C] font-semibold px-5 py-2 rounded-lg text-sm hover:bg-blue-50 transition disabled:opacity-50">
-            ⬇ Descargar Excel
-          </button>
-          <button onClick={() => setMostrarPanel(true)} disabled={descargando}
-            className="bg-white/20 text-white font-semibold px-5 py-2 rounded-lg text-sm hover:bg-white/30 transition disabled:opacity-50">
-            ⬇ Descargar Gráficas
-          </button>
+          {esFree ? (
+            <a href="/dashboard/planes" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.15)', color: '#fff', fontWeight: '600', padding: '8px 18px', borderRadius: '8px', fontSize: '13px', textDecoration: 'none', border: '1px solid rgba(255,255,255,0.3)' }}>
+              🔒 Desbloquear descargas
+            </a>
+          ) : (
+            <>
+              <button onClick={() => descargar('excel')} disabled={descargando}
+                className="bg-white text-[#1F4E8C] font-semibold px-5 py-2 rounded-lg text-sm hover:bg-blue-50 transition disabled:opacity-50">
+                ⬇ Descargar Excel
+              </button>
+              <button onClick={() => setMostrarPanel(true)} disabled={descargando}
+                className="bg-white/20 text-white font-semibold px-5 py-2 rounded-lg text-sm hover:bg-white/30 transition disabled:opacity-50">
+                ⬇ Descargar Gráficas
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -228,7 +239,20 @@ export default function ResultadoAnalisis({ resultado }) {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <TablaFrecuencia indice={idx} datos={datos} />
-            <GraficaFrecuencia indice={idx} datos={datos} titulo={INDICES_INFO[idx]?.titulo} />
+            {esFree ? (
+              <div style={{ position: 'relative', borderRadius: '10px', overflow: 'hidden', background: '#f8f8f8', minHeight: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ filter: 'blur(6px)', pointerEvents: 'none', width: '100%' }}>
+                  <GraficaFrecuencia indice={idx} datos={datos} titulo={INDICES_INFO[idx]?.titulo} />
+                </div>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.6)', gap: '10px' }}>
+                  <div style={{ fontSize: '28px' }}>🔒</div>
+                  <p style={{ fontSize: '13px', fontWeight: '600', color: '#1F4E8C', textAlign: 'center', margin: 0 }}>Gráficas disponibles en planes de pago</p>
+                  <a href="/dashboard/planes" style={{ fontSize: '12px', background: '#1F4E8C', color: '#fff', padding: '6px 16px', borderRadius: '8px', textDecoration: 'none', fontWeight: '600' }}>Ver planes →</a>
+                </div>
+              </div>
+            ) : (
+              <GraficaFrecuencia indice={idx} datos={datos} titulo={INDICES_INFO[idx]?.titulo} />
+            )}
           </div>
 
           {/* Modo B: card de cercanía por índice */}

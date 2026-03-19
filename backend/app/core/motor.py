@@ -279,8 +279,9 @@ class MotorAnalisis:
 
         tabla_pob = self._tabla_geo(df_sector)
         df_muestra = self._seleccionar_muestra(df_sector, config.porcentaje_muestra, config.seed)
-        n_muestra = len(df_muestra)
-        tabla_mue = self._tabla_geo(df_muestra)
+        n_muestra  = len(df_muestra)
+        # tabla_mue se calculará después — en Modo B se reemplaza df_muestra con df_grupo
+        tabla_mue  = self._tabla_geo(df_muestra)  # puede ser sobreescrita abajo
 
         if n_muestra < 30:
             if n_muestra < 10:
@@ -310,7 +311,8 @@ class MotorAnalisis:
                 df_sector, config.indices_empresa, n_obj_b, config.seed
             )
             df_muestra = df_grupo  # el grupo seleccionado ES la muestra del Modo B
-            n_muestra = len(df_muestra)
+            n_muestra  = len(df_muestra)
+            tabla_mue  = self._tabla_geo(df_muestra)  # recalcular con el grupo real
 
             for idx in RANGOS:
                 serie = df_muestra[idx].dropna()
@@ -349,9 +351,12 @@ class MotorAnalisis:
         col = self.col.get("dpto", "")
         if col not in df.columns:
             return pd.DataFrame(columns=["Departamento", "Número de Empresas"])
-        conteo = df[col].value_counts().reset_index()
+        # Incluir empresas sin departamento como "Sin información"
+        serie = df[col].fillna("Sin información")
+        conteo = serie.value_counts().reset_index()
         conteo.columns = ["Departamento", "Número de Empresas"]
-        total = pd.DataFrame([{"Departamento": "Total general", "Número de Empresas": len(df)}])
+        # Total = empresas con índices calculados (las que participan en el análisis)
+        total = pd.DataFrame([{"Departamento": "Total general", "Número de Empresas": conteo["Número de Empresas"].sum()}])
         return pd.concat([conteo, total], ignore_index=True)
 
     # ── MUESTRA ESTRATIFICADA POR DEPTO ────────────────────────────────────
@@ -640,27 +645,45 @@ class MotorAnalisis:
         # RCI puede ser NaN para empresas sin deuda financiera — no excluirlas
         cols_obligatorios = ["IL", "IE"]
         cols_disp = [c for c in cols_idx if df[c].notna().sum() > 0]
-        df_valido = df.dropna(subset=cols_obligatorios).reset_index(drop=True)
+        # Conservar índice original para recuperar columnas originales después
+        df_valido = df.dropna(subset=cols_obligatorios).copy()
+        df_valido = df_valido.reset_index(drop=True)
 
         if len(df_valido) == 0:
             return df_sector.head(n_obj), None
 
         n_sel = min(n_obj, len(df_valido))
 
-        # Distancia euclidiana usando percentil rank (robusto a outliers)
-        # Se calcula por empresa usando solo los índices disponibles (ignora NaN)
+        # ── Distancia Z-score ponderada por dirección ────────────────────
+        # Normalizar cada índice: z = (x - media) / std del sector
+        # Pesos: IL e IE son los más importantes (peso 2), luego RCI (1.5), RP y RA (1)
+        PESOS = {"IL": 2.0, "IE": 2.0, "RCI": 1.5, "RP": 1.0, "RA": 1.0}
+
         dist_mat = pd.DataFrame(index=df_valido.index)
         for idx in cols_disp:
-            col = df_valido[idx]
-            # rank solo sobre valores válidos de esa columna
-            col_norm = col.rank(pct=True)          # NaN → NaN (no participa)
-            n_menores = (col < indices_objetivo[idx]).sum()
-            obj_norm  = n_menores / col.notna().sum() if col.notna().sum() > 0 else 0.5
-            dist_mat[idx] = (col_norm - obj_norm) ** 2
+            col  = df_valido[idx].copy()
+            validos = col.dropna()
+            if len(validos) < 2:
+                continue
 
-        # Promedio de dimensiones disponibles por empresa (mean ignora NaN)
+            media = validos.mean()
+            std   = validos.std()
+            if std < 1e-9:
+                continue   # índice sin variación — no aporta información
+
+            # Z-score de cada empresa
+            z_col = (col - media) / std
+
+            # Z-score del objetivo
+            z_obj = (indices_objetivo[idx] - media) / std
+
+            # Distancia ponderada al cuadrado
+            peso = PESOS.get(idx, 1.0)
+            dist_mat[idx] = peso * (z_col - z_obj) ** 2
+
+        # Promedio de dimensiones disponibles (mean ignora NaN automáticamente)
         dist = dist_mat.mean(axis=1)
-        # Empresas sin ningún índice calculable obtienen distancia máxima (van al final)
+        # Empresas sin ningún índice calculable → distancia máxima (van al final)
         dist = dist.fillna(dist.max() + 1 if dist.notna().any() else 999)
         df_valido["_dist"] = dist
         df_valido = df_valido.sort_values("_dist").reset_index(drop=True)
@@ -793,7 +816,7 @@ C = {"azul": "#1F4E8C", "azul2": "#2E86C1", "celeste": "#AED6F1",
 class GeneradorGraficas:
     def __init__(self, resultado: ResultadoAnalisis, paleta: str = "corporativo",
                  incluir_conclusion: bool = True, indices: list | None = None,
-                 color_personalizado: dict | None = None):
+                 color_personalizado: dict | None = None, marca_agua: bytes | None = None):
         self.r = resultado
         # Resolver paleta de colores
         if color_personalizado:
@@ -801,13 +824,49 @@ class GeneradorGraficas:
         else:
             self.p = PALETAS.get(paleta, PALETAS["corporativo"])
         self.incluir_conclusion = incluir_conclusion
-        self.indices_incluir = indices or list(RANGOS.keys())
+        self.indices_incluir    = indices or list(RANGOS.keys())
+        self.marca_agua         = marca_agua  # bytes del PNG de marca de agua
 
     def _buf(self, fig) -> bytes:
         b = io.BytesIO()
         fig.savefig(b, format="png", bbox_inches="tight", dpi=150, facecolor="white")
         plt.close(fig)
-        return b.getvalue()
+        img_bytes = b.getvalue()
+        if self.marca_agua:
+            img_bytes = self._aplicar_marca_agua(img_bytes)
+        return img_bytes
+
+    def _aplicar_marca_agua(self, img_bytes: bytes) -> bytes:
+        """Superpone el PNG de marca de agua centrado y semitransparente."""
+        try:
+            from PIL import Image
+            base = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+            wm   = Image.open(io.BytesIO(self.marca_agua)).convert("RGBA")
+
+            # Escalar marca de agua al 20% del ancho de la imagen
+            max_w = int(base.width * 0.20)
+            ratio = max_w / wm.width
+            wm    = wm.resize((max_w, int(wm.height * ratio)), Image.LANCZOS)
+
+            # Reducir opacidad al 25%
+            r, g, b_ch, a = wm.split()
+            a = a.point(lambda x: int(x * 0.30))
+            wm.putalpha(a)
+
+            # Posición: centrada en la imagen
+            x = (base.width  - wm.width)  // 2
+            y = (base.height - wm.height) // 2
+
+            capa = Image.new("RGBA", base.size, (0, 0, 0, 0))
+            capa.paste(wm, (x, y), wm)
+            resultado = Image.alpha_composite(base, capa).convert("RGB")
+
+            out = io.BytesIO()
+            resultado.save(out, format="PNG", dpi=(150, 150))
+            return out.getvalue()
+        except Exception as e:
+            logger.warning(f"Error aplicando marca de agua: {e}")
+            return img_bytes
 
     def _vacia(self, msg) -> bytes:
         fig, ax = plt.subplots(figsize=(5, 3))
@@ -862,12 +921,9 @@ class GeneradorGraficas:
         ax1b.set_ylim(0, 115)
         ax1b.legend(fontsize=8, loc="upper right")
 
-        # Línea objetivo empresa (modo B)
-        if res.objetivo_empresa is not None:
-            pos = self._pos_rango(tabla, res.objetivo_empresa)
-            ax1.axvline(pos, color=self.p["ref"], linewidth=2, linestyle=":",
-                        label=f"Objetivo: {res.objetivo_empresa:g}")
-            ax1.legend(fontsize=8)
+        # Línea objetivo empresa (modo B) — no se muestra en la gráfica
+        # el objetivo se muestra solo en la tabla de resumen, no en la imagen descargable
+        pass
 
         # Panel de conclusión (solo si se incluye)
         if ax2 is None:
@@ -910,8 +966,8 @@ class GeneradorGraficas:
 
         fig, ax = plt.subplots(figsize=(10, max(4, len(merged) * 0.4)))
         y = range(len(merged))
-        ax.barh(y, merged["Número de Empresas P"], color=C["celeste"], label="Población", alpha=0.85)
-        ax.barh(y, merged["Número de Empresas M"], color=C["azul2"], label="Muestra", alpha=0.9)
+        ax.barh(y, merged["Número de Empresas P"], color=self.p["bar_normal"], label="Población", alpha=0.85)
+        ax.barh(y, merged["Número de Empresas M"], color=self.p["bar_activa"], label="Muestra", alpha=0.9)
         ax.set_yticks(list(y))
         ax.set_yticklabels(merged["Departamento"].tolist(), fontsize=9)
         ax.set_title(f"Distribución geográfica — Población ({self.r.n_poblacion}) vs Muestra ({self.r.n_muestra})",
@@ -933,7 +989,7 @@ class GeneradorGraficas:
         fig.suptitle("Resumen de Índices Recomendados",
                      fontsize=13, fontweight="bold", color=self.p["titulo"])
 
-        bars1 = ax1.bar(indices, recom, color=C["conc"], edgecolor="white")
+        bars1 = ax1.bar(indices, recom, color=self.p["bar_activa"], edgecolor="white")
         ax1.set_title("Valor recomendado por índice", fontsize=11)
         ax1.set_ylabel("Valor", fontsize=10)
         ax1.grid(axis="y", alpha=0.3, linestyle="--")
@@ -947,8 +1003,8 @@ class GeneradorGraficas:
                      f"{sym}{v:g}", ha="center", fontsize=10,
                      fontweight="bold", color=self.p["titulo"])
 
-        bars2 = ax2.bar(indices, pcts, color=C["verde"], edgecolor="white")
-        ax2.axhline(self.r.config.hi_umbral * 100, color=C["rojo"],
+        bars2 = ax2.bar(indices, pcts, color=self.p["bar_activa"], edgecolor="white")
+        ax2.axhline(self.r.config.hi_umbral * 100, color=self.p["ref"],
                     linewidth=1.5, linestyle="--", label=f"Umbral {self.r.config.hi_umbral:.0%}")
         ax2.set_title("% del sector que cumple cada índice", fontsize=11)
         ax2.set_ylabel("%", fontsize=10)

@@ -46,6 +46,9 @@ class Usuario(Base):
     mes_creditos_free = Column(String(7), nullable=True)  # "2025-01"
     es_admin        = Column(Boolean, default=False, nullable=False)
     activo          = Column(Boolean, default=True, nullable=False)
+    session_token   = Column(String(64), nullable=True)   # token de sesión activa — una sola por usuario
+    ultimo_ip       = Column(String(45), nullable=True)    # IP del último login
+    ultimo_login    = Column(DateTime, nullable=True)      # fecha del último login
     creado_en       = Column(DateTime, default=datetime.utcnow, nullable=False)
     actualizado_en  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -126,19 +129,33 @@ class Analisis(Base):
     usuario         = relationship("Usuario", back_populates="analisis")
 
 
+class TipoTransaccionEnum(str, enum.Enum):
+    pack5       = "pack5"           # 5 créditos
+    pack15      = "pack15"          # 15 créditos
+    pack30      = "pack30"          # 30 créditos
+    pro_mensual = "pro_mensual"
+    pro_trimestral = "pro_trimestral"
+    pro_anual   = "pro_anual"
+
+
 class Transaccion(Base):
-    """Historial de pagos y acreditación de créditos."""
+    """Historial de pagos con Wompi."""
     __tablename__ = "transacciones"
 
     id                  = Column(Integer, primary_key=True, index=True)
     usuario_id          = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
-    tipo                = Column(String(50), nullable=False)   # "credito" | "suscripcion"
-    monto_cop           = Column(Integer, nullable=False)
+    tipo                = Column(SAEnum(TipoTransaccionEnum), nullable=False)
+    monto_cop           = Column(Integer, nullable=False)        # en pesos (no centavos)
     creditos_comprados  = Column(Integer, default=0)
     estado              = Column(SAEnum(EstadoPagoEnum), default=EstadoPagoEnum.pendiente)
-    payu_ref            = Column(String(100), nullable=True, index=True)
-    payu_response       = Column(JSON, nullable=True)
+    # Wompi refs
+    wompi_id            = Column(String(100), nullable=True, index=True)   # id transacción Wompi
+    wompi_referencia    = Column(String(100), nullable=True, index=True)   # referencia interna
+    wompi_response      = Column(JSON, nullable=True)                      # payload completo
+    # Suscripción
+    suscripcion_hasta   = Column(Date, nullable=True)    # fecha fin que se activa
     creado_en           = Column(DateTime, default=datetime.utcnow, nullable=False)
+    acreditado_en       = Column(DateTime, nullable=True)  # cuando se procesó el webhook
 
     usuario             = relationship("Usuario", back_populates="transacciones")
 

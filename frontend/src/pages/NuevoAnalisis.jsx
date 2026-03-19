@@ -15,18 +15,23 @@ const INDICES_LABELS = {
 
 export default function NuevoAnalisis() {
   const navigate = useNavigate()
-  const [cargando, setCargando] = useState(false)
-  const [modo, setModo] = useState('A')
-  const [ciius, setCiius] = useState([])
-  const [busqueda, setBusqueda] = useState('')
-  const [opciones, setOpciones] = useState([])
-  const [cargandoCiiu, setCargandoCiiu] = useState(false)
+  const BORRADOR_KEY = 'finanalytics_borrador_analisis'
+  const borrador = (() => {
+    try { return JSON.parse(localStorage.getItem(BORRADOR_KEY) || 'null') } catch { return null }
+  })()
+
+  const [cargando, setCargando]             = useState(false)
+  const [modo, setModo]                     = useState(borrador?.modo || 'A')
+  const [ciius, setCiius]                   = useState(borrador?.ciius || [])
+  const [busqueda, setBusqueda]             = useState('')
+  const [opciones, setOpciones]             = useState([])
+  const [cargandoCiiu, setCargandoCiiu]     = useState(false)
   const [mostrarDropdown, setMostrarDropdown] = useState(false)
-  const [pctMuestra, setPctMuestra] = useState(3)
-  const [hiUmbral, setHiUmbral] = useState(59)
-  const [indicesEmpresa, setIndicesEmpresa] = useState({ IL: '', IE: '', RCI: '', RP: '', RA: '' })
-  const [nEmpresasB, setNEmpresasB] = useState(30)
-  const [nombreAnalisis, setNombreAnalisis] = useState('')   // Modo B: número de empresas
+  const [pctMuestra, setPctMuestra]         = useState(3)
+  const [hiUmbral, setHiUmbral]             = useState(59)
+  const [indicesEmpresa, setIndicesEmpresa] = useState(borrador?.indicesEmpresa || { IL: '', IE: '', RCI: '', RP: '', RA: '' })
+  const [nEmpresasB, setNEmpresasB]         = useState(30)
+  const [nombreAnalisis, setNombreAnalisis] = useState(borrador?.nombre || '')   // Modo B: número de empresas
   const [estadoDatos, setEstadoDatos] = useState(null)
   const inputRef = useRef(null)
   const dropdownRef = useRef(null)
@@ -116,6 +121,15 @@ export default function NuevoAnalisis() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-2">Nuevo Análisis</h1>
+      {borrador && (ciius.length > 0 || nombreAnalisis) && (
+        <div style={{ display:'flex', alignItems:'center', gap:'8px', fontSize:'12px', color:'#92400E', background:'#FFFBEB', border:'1px solid #FCD34D', borderRadius:'8px', padding:'8px 12px', marginBottom:'8px' }}>
+          <span>Borrador restaurado automáticamente.</span>
+          <button onClick={() => { localStorage.removeItem(BORRADOR_KEY); window.location.reload() }}
+            style={{ fontWeight:'600', textDecoration:'underline', background:'none', border:'none', cursor:'pointer', color:'#92400E' }}>
+            Limpiar
+          </button>
+        </div>
+      )}
 
       {estadoDatos ? (
         <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2 text-sm text-green-800 mb-6">

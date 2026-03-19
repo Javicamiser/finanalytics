@@ -69,6 +69,8 @@ export default function PanelPersonalizacion({ analisisId, indices, onClose }) {
   const [indicesSelec, setIndicesSelec] = useState(Object.keys(indices || {}))
   const [indicePreview, setIndicePreview] = useState(Object.keys(indices || {})[0] || 'IL')
   const [descargando, setDescargando] = useState(false)
+  const [marcaAgua, setMarcaAgua]     = useState(null)   // File object
+  const [marcaPreview, setMarcaPreview] = useState(null) // URL preview
 
   const paletaActual = usarCustom
     ? { activa: colorActiva, normal: colorNormal, linea: colorLinea }
@@ -92,10 +94,13 @@ export default function PanelPersonalizacion({ analisisId, indices, onClose }) {
         ...(usarCustom && {
           color_activa: colorActiva,
           color_normal: colorNormal,
-          color_linea: colorLinea,
+          color_linea:  colorLinea,
         }),
       })
-      const blob = await analisisService.descargarGraficasPersonalizadas(analisisId, params.toString())
+      const formData = new FormData()
+      if (marcaAgua) formData.append('marca_agua', marcaAgua)
+
+      const blob = await analisisService.descargarGraficasPersonalizadas(analisisId, params.toString(), formData)
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
       a.href     = url
@@ -260,6 +265,46 @@ export default function PanelPersonalizacion({ analisisId, indices, onClose }) {
             </div>
           </div>
         </div>
+
+        {/* Marca de agua */}
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em', color: GRAY[500], marginBottom: '10px' }}>
+              Marca de agua (opcional)
+            </div>
+            <label style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+              padding: '16px', borderRadius: '10px', cursor: 'pointer',
+              border: `2px dashed ${marcaAgua ? PRIMARY[400] : GRAY[200]}`,
+              background: marcaAgua ? PRIMARY[50] : '#fff',
+              transition: 'all 0.15s',
+            }}>
+              {marcaPreview ? (
+                <img src={marcaPreview} alt="preview" style={{ maxHeight: '60px', maxWidth: '100%', objectFit: 'contain', opacity: 0.5 }} />
+              ) : (
+                <Icon.Download size={20} color={GRAY[300]} />
+              )}
+              <span style={{ fontSize: '12px', color: GRAY[500] }}>
+                {marcaAgua ? marcaAgua.name : 'Subir logo PNG o JPG'}
+              </span>
+              <input type="file" accept="image/png,image/jpeg" style={{ display: 'none' }}
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (f) {
+                    setMarcaAgua(f)
+                    setMarcaPreview(URL.createObjectURL(f))
+                  }
+                }} />
+            </label>
+            {marcaAgua && (
+              <button onClick={() => { setMarcaAgua(null); setMarcaPreview(null) }}
+                style={{ fontSize: '11px', color: GRAY[400], background: 'none', border: 'none', cursor: 'pointer', marginTop: '4px' }}>
+                ✕ Quitar marca de agua
+              </button>
+            )}
+            <p style={{ fontSize: '10px', color: GRAY[300], marginTop: '4px' }}>
+              Se mostrará semitransparente en la esquina inferior derecha de cada gráfica
+            </p>
+          </div>
 
         {/* Footer con botón de descarga */}
         <div style={{

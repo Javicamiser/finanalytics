@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.database import engine, Base
 from app.models import models  # importar para que SQLAlchemy registre los modelos
-from app.api.routers import auth, analisis, datos
+from app.api.routers import auth, analisis, datos, pagos
 
 # Crear tablas (en producción usar Alembic)
 Base.metadata.create_all(bind=engine)
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(auth.router,     prefix="/api")
 app.include_router(analisis.router, prefix="/api")
 app.include_router(datos.router,    prefix="/api")
+app.include_router(pagos.router)
 
 
 @app.get("/health")

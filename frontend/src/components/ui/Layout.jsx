@@ -15,19 +15,25 @@ const Icons = {
 
 const NAV = [
   { section: 'Análisis', items: [
-    { to: '/',          label: 'Dashboard',      icon: Icons.dashboard },
-    { to: '/nuevo',     label: 'Nuevo análisis', icon: Icons.nuevo },
-    { to: '/historial', label: 'Historial',      icon: Icons.historial },
+    { to: '/dashboard',           label: 'Dashboard',      icon: Icons.dashboard },
+    { to: '/dashboard/nuevo',     label: 'Nuevo análisis', icon: Icons.nuevo },
+    { to: '/dashboard/historial', label: 'Historial',      icon: Icons.historial },
   ]},
   { section: 'Cuenta', items: [
-    { to: '/perfil', label: 'Mi perfil', icon: Icons.perfil },
+    { to: '/dashboard/admin',  label: 'Administración',   icon: <Icon.Settings />, soloAdmin: true },
+    { to: '/dashboard/planes', label: 'Planes y créditos', icon: <Icon.CreditCard /> },
+    { to: '/dashboard/perfil', label: 'Mi perfil',         icon: <Icon.User /> },
   ]},
 ]
 
-function NavItem({ to, label, icon, collapsed }) {
+function NavItem({ to, label, icon, collapsed, soloAdmin }) {
+  const { user } = useAuthStore()
   const { pathname } = useLocation()
-  const active = pathname === to || (to !== '/' && pathname.startsWith(to))
+  const active = pathname === to || (to !== '/dashboard' && pathname.startsWith(to))
   const [hover, setHover] = useState(false)
+
+  // Return condicional DESPUÉS de todos los hooks
+  if (soloAdmin && !user?.es_admin) return null
 
   return (
     <Link to={to} title={collapsed ? label : undefined}

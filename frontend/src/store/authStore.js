@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 import { authService } from '../services/api'
 
-export const useAuthStore = create((set) => ({
-  user: null,
-  token: localStorage.getItem('token'),
+export const useAuthStore = create((set, get) => ({
+  user:    null,
+  token:   localStorage.getItem('token'),
   loading: false,
 
   login: async (email, password) => {
