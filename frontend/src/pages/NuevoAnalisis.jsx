@@ -110,7 +110,7 @@ export default function NuevoAnalisis() {
       }
       const resultado = await analisisService.ejecutar(config)
       toast.success('Análisis completado')
-      navigate(`/analisis/${resultado.id}`)
+      navigate(`/dashboard/analisis/${resultado.id}`)
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al ejecutar el análisis')
     } finally {

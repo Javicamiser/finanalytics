@@ -119,7 +119,14 @@ def actualizar_usuario(
         raise HTTPException(404, "Usuario no encontrado")
     if "plan" in payload:
         from app.models.models import PlanEnum
+        from datetime import date, timedelta
         target.plan = PlanEnum(payload["plan"])
+        # Al asignar Pro manualmente, dar 1 año de suscripción si no tiene fecha
+        if payload["plan"] == "pro" and not target.suscripcion_hasta:
+            target.suscripcion_hasta = date.today() + timedelta(days=365)
+        # Al bajar a free o créditos, limpiar suscripción
+        if payload["plan"] in ("free", "creditos"):
+            target.suscripcion_hasta = None
     if "es_admin" in payload:
         target.es_admin = bool(payload["es_admin"])
     if "creditos" in payload:
